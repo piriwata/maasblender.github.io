@@ -3,9 +3,11 @@ sidebar_position: 10
 title: "Scenario: Demand Generator"
 ---
 
-This chapter specifies the three demand-generation components available under `scenario` in MaaS Blender.
+This chapter specifies the reference implementations for demand-generation components in MaaS Blender.
 Each component emits `DEMAND` events that kick off user activity in the simulation.
 They differ by how and when those demands are created.
+
+The project currently ships two reference implementations under `maasblender/src/scenario`:
 
 - Stochastic Window Generator: to simulate aggregate, probabilistic flows over time windows.
 - Historical Replay: when you need exact timing and content of demands (replay/benchmark).
