@@ -229,79 +229,259 @@ The Simple Planner with GTFS/GBFS input is ideal for simulating real-world multi
 - Files: `maasblender/src/planner/opentripplanner/`
 - Primary class: `OTPPlanner`
 
-This planner integrates with OpenTripPlanner (OTP), an open-source multi-modal journey planning engine that uses real-world GTFS transit data and OpenStreetMap road networks.
+This planner integrates with OpenTripPlanner (OTP), an open-source multi-modal journey planning engine. In MaaS Blender, OTP is typically configured using GTFS (General Transit Feed Specification) and GBFS (General Bikeshare Feed Specification) files through the broker setup.
 
 ### Behavior
 
 - **External Service**: The planner communicates with an OTP server via REST API.
-- **Data Sources**: OTP builds routing graphs from:
-  - GTFS (General Transit Feed Specification) for transit schedules
-  - OpenStreetMap (OSM) for walking, cycling, and road networks
+- **Data Sources**: OTP builds routing graphs from uploaded files:
+  - **GTFS Files**: Transit schedules, stops, routes, and trips for public transportation.
+  - **GBFS Files**: Bike-sharing station information and vehicle availability (optional).
+  - **OTP Configuration**: Graph build settings, routing preferences, and updater configurations.
+  - **OpenStreetMap (OSM)**: Walking, cycling, and road networks (included in otp-config.zip).
 - **Route Calculation**:
   - Sends a planning request to the OTP endpoint with origin, destination, and departure time.
-  - OTP returns one or more itineraries, each composed of legs with different modes (walk, bus, train, etc.).
+  - OTP returns one or more itineraries, each composed of legs with different modes (walk, bus, train, bike, etc.).
   - The planner transforms OTP's response into MaaS Blender's `Route` format.
-- **Real-time Updates**: If OTP is configured with real-time feeds, routes reflect current delays and service changes.
-- **Multi-modal Support**: Handles complex combinations like walk → bus → transfer → train → walk.
+- **Real-time Updates**: If OTP is configured with real-time GTFS-RT feeds in the configuration, routes reflect current delays and service changes.
+- **Multi-modal Support**: Handles complex combinations like walk → bus → transfer → train → bike → walk.
 
 ### Configuration
 
+OTP Planner is configured through the broker setup with GTFS/GBFS file inputs and OTP configuration:
+
+#### Basic Configuration Structure
+
 ```json
 {
-  "endpoint": "http://localhost:8080/otp/routers/default/plan",
-  "max_walk_distance": 1000,              // meters
-  "modes": "WALK,TRANSIT",                // allowed travel modes
-  "num_itineraries": 3,                   // number of alternative routes
-  "walk_speed": 1.4,                      // m/s
-  "timeout": 10.0                         // seconds
+  "planner": {
+    "type": "planner",
+    "endpoint": "http://planner",
+    "details": {
+      "otp_config": {
+        "input_files": [
+          {
+            "filename": "otp-config.zip"
+          }
+        ]
+      },
+      "networks": {
+        "gtfs": {
+          "type": "gtfs",
+          "input_files": [
+            {
+              "filename": "gtfs.zip"
+            }
+          ],
+          "agency_id": "7230001002032"          // optional: filter by agency
+        }
+      },
+      "reference_time": "20251016",             // YYYYMMDD format (required, 8 chars)
+      "modes": ["WALK", "TRANSIT"],             // optional: allowed transport modes
+      "walking_meters_per_minute": 50.0,        // optional: if None, read from router_config.json
+      "timezone": 9                              // optional: timezone offset (default: +9)
+    }
+  }
 }
 ```
 
-- `endpoint`: URL of the OTP planning API.
-- `max_walk_distance`: maximum walking distance in meters.
-- `modes`: comma-separated list of allowed modes (e.g., `"WALK,TRANSIT"`, `"WALK,BICYCLE,TRANSIT"`).
-- `num_itineraries`: number of alternative routes to request.
-- `walk_speed`: assumed walking speed in meters per second.
-- `timeout`: maximum time to wait for OTP response.
+**Required Parameters:**
+- `otp_config`: OTP configuration files (includes OSM data, build settings, router configuration).
+  - `input_files`: List of configuration zip files to upload.
+- `networks`: Dictionary of network configurations (GTFS, GBFS, etc.).
+- `reference_time`: Simulation reference date in YYYYMMDD format (must be exactly 8 characters).
 
-#### Example Setup
+**Optional Parameters:**
+- `modes`: List of allowed transport modes (e.g., `["WALK", "TRANSIT", "BICYCLE"]`). If not specified, OTP uses all available modes.
+- `walking_meters_per_minute`: Walking speed. If `null`, the value is read from OTP's `router_config.json`.
+- `timezone`: Timezone offset in hours (default: `+9` for JST).
 
-1. **Start OTP Server**:
-   ```bash
-   # Download OTP and prepare graph data
-   java -Xmx2G -jar otp-2.5.0-shaded.jar --build --save /path/to/graph
-   java -Xmx2G -jar otp-2.5.0-shaded.jar --load /path/to/graph
-   ```
+#### OTP Configuration File (otp-config.zip)
 
-2. **Configure MaaS Blender**:
+The `otp-config.zip` should contain:
+
+1. **OpenStreetMap Data** (`map.osm.pbf` or similar):
+   - Road network for walking and cycling routes
+
+2. **build-config.json** (optional):
    ```json
    {
-     "planner": {
-       "type": "opentripplanner",
-       "endpoint": "http://localhost:8080/otp/routers/default/plan",
-       "max_walk_distance": 1000,
-       "modes": "WALK,TRANSIT",
-       "num_itineraries": 3
-     }
+     "areaVisibility": true,
+     "platformEntriesLinking": true,
+     "matchBusRoutesToStreets": true
    }
    ```
 
-3. **Use in Simulation**:
-   ```python
-   from planner.opentripplanner import OTPPlanner
-   
-   planner = OTPPlanner(
-       endpoint="http://localhost:8080/otp/routers/default/plan",
-       max_walk_distance=1000,
-       modes="WALK,TRANSIT"
-   )
-   
-   routes = await planner.plan(
-       org=Location(location_id="Home", lat=35.6895, lng=139.6917),
-       dst=Location(location_id="Office", lat=35.6812, lng=139.7671),
-       dept=480.0  # 08:00
-   )
+3. **router-config.json** (optional):
+   ```json
+   {
+     "routingDefaults": {
+       "walkSpeed": 1.4,
+       "bikeSpeed": 5.0,
+       "carSpeed": 15.0
+     },
+     "updaters": [
+       {
+         "type": "vehicle-rental",
+         "sourceType": "gbfs",
+         "url": "https://example.com/gbfs.json",
+         "network": "bike-share-system"
+       }
+     ]
+   }
    ```
+
+#### GTFS Configuration
+
+```json
+{
+  "networks": {
+    "gtfs": {
+      "type": "gtfs",
+      "input_files": [
+        {
+          "filename": "gtfs.zip"
+        }
+      ],
+      "agency_id": "7230001002032"
+    }
+  }
+}
+```
+
+- `type`: Must be `"gtfs"` for transit data.
+- `input_files`: List of GTFS zip files (uploaded separately).
+- `agency_id`: Optional filter to use only specific transit agencies.
+
+#### GBFS Configuration
+
+```json
+{
+  "networks": {
+    "bike_share": {
+      "type": "gbfs",
+      "input_files": [
+        {
+          "filename": "gbfs_feed.json"
+        }
+      ]
+    }
+  }
+}
+```
+
+- `type`: Must be `"gbfs"` for bike-sharing data.
+- `input_files`: List of GBFS JSON files with station and availability information.
+
+#### Multi-Modal Configuration (GTFS + GBFS)
+
+```json
+{
+  "planner": {
+    "type": "planner",
+    "endpoint": "http://planner",
+    "details": {
+      "otp_config": {
+        "input_files": [
+          {
+            "filename": "otp-config.zip"
+          }
+        ]
+      },
+      "networks": {
+        "gtfs": {
+          "type": "gtfs",
+          "input_files": [
+            {
+              "filename": "gtfs.zip"
+            }
+          ]
+        },
+        "bike_share": {
+          "type": "gbfs",
+          "input_files": [
+            {
+              "filename": "gbfs_feed.json"
+            }
+          ]
+        }
+      },
+      "reference_time": "20251016",
+      "modes": ["WALK", "TRANSIT", "BICYCLE"],
+      "walking_meters_per_minute": 50.0,
+      "timezone": 9
+    }
+  }
+}
+```
+
+This enables multi-modal routing combining transit, bike-sharing, and walking.
+
+#### Example Setup
+
+1. **Upload OTP Configuration File**:
+   ```python
+   import httpx
+   
+   with httpx.Client() as client:
+       # Upload OTP configuration (includes OSM data, build-config.json, router-config.json)
+       with open("otp-config.zip", "rb") as otp_config_file:
+           response = client.post(
+               "http://localhost:3010/upload",
+               files={
+                   "upload_file": (
+                       "otp-config.zip",
+                       otp_config_file,
+                       "application/x-zip-compressed"
+                   )
+               }
+           )
+   ```
+
+2. **Upload GTFS File** (for transit):
+   ```python
+   with httpx.Client() as client:
+       with open("gtfs.zip", "rb") as gtfs_file:
+           response = client.post(
+               "http://localhost:3010/upload",
+               files={
+                   "upload_file": (
+                       "gtfs.zip",
+                       gtfs_file,
+                       "application/x-zip-compressed"
+                   )
+               }
+           )
+   ```
+
+3. **Upload GBFS File** (for bike share, optional):
+   ```python
+   with httpx.Client() as client:
+       with open("gbfs_feed.json", "rb") as gbfs_file:
+           response = client.post(
+               "http://localhost:3010/upload",
+               files={
+                   "upload_file": (
+                       "gbfs_feed.json",
+                       gbfs_file,
+                       "application/json"
+                   )
+               }
+           )
+   ```
+
+4. **Configure Planner in broker_setup.json** (as shown above)
+
+5. **Setup and Start Simulation**:
+   The OTP planner service automatically:
+   - Extracts uploaded files
+   - Builds the routing graph from GTFS data and OSM networks
+   - Starts the OTP server
+   - Becomes ready for route planning requests during simulation
+
+:::info
+The OTP graph building process may take several minutes depending on the size of GTFS data and OSM network. The broker setup step will wait for this process to complete before starting the simulation.
+:::
 
 ### Output
 
@@ -310,13 +490,17 @@ This planner integrates with OpenTripPlanner (OTP), an open-source multi-modal j
   - `dept`: departure time (minutes from simulation start)
   - `arrv`: arrival time (minutes from simulation start)
   - `trips`: list of `Trip` objects representing legs with:
-    - `org`, `dst`: origin and destination `Location` objects
-    - `service`: mode identifier (e.g., `"walking"`, `"bus-line-123"`, `"train-A"`)
+    - `org`, `dst`: origin and destination `Location` objects (from GTFS stops, GBFS stations, or OSM nodes)
+    - `service`: mode identifier (e.g., `"walking"`, `"bus-line-123"`, `"train-A"`, `"bike-share"`)
     - `dept`, `arrv`: leg-specific departure and arrival times
 - If OTP returns no itineraries, returns an empty list or a default walking route.
 
 :::warning
-Ensure your OTP server is running and accessible before starting the simulation. Network issues or OTP downtime will cause planning failures.
+Ensure all required files (otp-config.zip, gtfs.zip, etc.) are uploaded before starting the broker setup. The OTP graph building process requires these files and will fail if any are missing.
+:::
+
+:::tip
+The OTP Planner with GTFS/GBFS input provides the most comprehensive multi-modal routing capabilities, supporting real-world transit schedules, bike-sharing systems, and detailed pedestrian/cycling networks from OpenStreetMap data.
 :::
 
 ---
@@ -324,15 +508,21 @@ Ensure your OTP server is running and accessible before starting the simulation.
 ### Common Operational Notes
 
 - **Interface Consistency**: Both planners implement the same `Planner` interface with an async `plan(org, dst, dept)` method.
-- **Time Base**: All times are in minutes from the simulation start. The OTP Planner converts between simulation time and absolute timestamps.
+- **Time Base**: All times are in minutes from the simulation start. The OTP Planner converts between simulation time and absolute timestamps using the `reference_time` and `timezone` settings.
 - **Coordinate System**: Locations use latitude/longitude (WGS84).
+- **File Upload**: Both planners require files to be uploaded via API before broker setup:
+  - Simple Planner: Uploads GTFS/GBFS files to the planner service.
+  - OTP Planner: Uploads otp-config.zip, GTFS files, and optionally GBFS files to the OTP service.
+- **Network Construction**:
+  - Simple Planner: Constructs in-memory network from GTFS/GBFS data during setup (fast, lightweight).
+  - OTP Planner: Builds comprehensive routing graph including OSM street networks during setup (slower, but more detailed).
 - **Error Handling**:
   - If planning fails, planners should return an empty list or a walking-only route as fallback.
   - The Simple Planner always succeeds (with at least a walking route).
-  - The OTP Planner may fail due to network issues or OTP errors; implement appropriate error handling and retries.
+  - The OTP Planner may fail due to graph building errors or OTP service issues; implement appropriate error handling.
 - **Performance**:
   - Simple Planner: Fast, in-memory graph search suitable for large-scale simulations with many concurrent users.
-  - OTP Planner: Network latency and OTP processing time affect performance; consider caching for repeated queries.
+  - OTP Planner: Network latency and OTP processing time affect performance; graph building can take several minutes; consider caching for repeated queries.
 - **Use Cases**:
-  - Use Simple Planner for controlled experiments, testing, and synthetic scenarios.
-  - Use OTP Planner for realistic simulations with real-world transit data and road networks.
+  - Use Simple Planner for lightweight simulations with GTFS/GBFS data where fast setup and deterministic results are priorities.
+  - Use OTP Planner for comprehensive real-world simulations requiring detailed street networks, complex multi-modal routing, and real-time transit updates.
