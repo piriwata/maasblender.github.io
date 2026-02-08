@@ -18,7 +18,7 @@ MaaS Blender is built on five core component types, each with clearly defined re
 
 4. **Mobility Service**: Represents transportation providers that can be integrated into the simulation platform. Each service manages its own resources and responds to reservation and departure requests through a standardized event contract.
 
-5. **Evaluation**: Auxiliary components that observe simulation behavior in real time without influencing it. Captures information that cannot be fully reconstructed from event logs alone, enabling richer analysis.
+5. **Evaluation**: Auxiliary components that observe simulation behavior in real time without influencing it. Capture information that cannot be fully reconstructed from event logs alone, enabling richer analysis.
 
 ## Event-Driven Architecture
 
