@@ -26,6 +26,19 @@ The Route Planner is responsible for:
 
 The Route Planner does not initiate actions in the simulation and does not participate directly in the event flow.
 
+### Data Model
+
+All planners expose a `plan(org, dst, dept)` method returning a list of `Route`/`Path` candidates. Time units are minutes from the simulation’s reference start.
+
+- `Location`: stop or coordinate identifier with `locationId`, `lat`, `lng`.
+- `Trip`: a single leg with fields:
+  - `org: Location`
+  - `dst: Location`
+  - `dept: float` (minutes since simulation start)
+  - `arrv: float` (minutes since simulation start)
+  - `service: string` (e.g., `walking`, `rail`, `bus`, `taxi`)
+- `Route`: an ordered list of `Trip` legs representing a candidate route from `org` to `dst`.
+
 ## Assumptions and Limitations
 
 To keep the planning process efficient and decoupled, the Route Planner operates under the following assumptions:
@@ -44,4 +57,4 @@ As a result, the Route Planner provides possible routes, not guaranteed ones.
 ## Design Rationale
 
 Route computation is intentionally separated from resource management so the Route Planner can remain stateless and reusable,
-while routing algorithms can evolve independently without coupling to service execution. 
+while routing algorithms can evolve independently without coupling to service execution.
