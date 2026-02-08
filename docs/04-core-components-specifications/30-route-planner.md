@@ -18,13 +18,15 @@ Both implementations provide the same interface: given an origin, destination, a
 - Files: `maasblender/src/planner/simple/`
 - Primary class: `SimplePlanner`
 
-This planner provides a lightweight, dependency-free routing solution for synthetic mobility networks defined programmatically.
+This planner provides a lightweight routing solution for mobility networks, typically constructed from GTFS (General Transit Feed Specification) or GBFS (General Bikeshare Feed Specification) files.
 
 ### Behavior
 
-- **Network Construction**: The planner operates on a `MobilityNetwork` graph, where:
-  - Nodes represent locations (stops, stations, or points of interest).
-  - Edges represent mobility services with associated travel times and schedules.
+- **Network Construction**: The planner constructs a `MobilityNetwork` from input data:
+  - **GTFS Files**: Reads transit schedules, stops, routes, and trips from GTFS format for public transportation.
+  - **GBFS Files**: Reads bikeshare station information and bike availability from GBFS format for bike-sharing systems.
+  - Nodes represent stops, stations, or points of interest.
+  - Edges represent mobility services with schedules and travel times derived from GTFS/GBFS data.
 - **Route Calculation**:
   - Given `(org, dst, dept)`, the planner searches the network for feasible paths.
   - Routes are composed of one or more trips, each representing a leg using a specific service.
@@ -38,7 +40,150 @@ This planner provides a lightweight, dependency-free routing solution for synthe
 
 ### Configuration
 
-The Simple Planner is typically configured via code rather than a configuration file. Network setup example:
+The Simple Planner is typically configured through the broker setup with GTFS or GBFS file input:
+
+#### GTFS Configuration (Public Transit)
+
+```json
+{
+  "planner": {
+    "type": "planner",
+    "endpoint": "http://planner",
+    "details": {
+      "networks": {
+        "gtfs": {
+          "type": "gtfs",
+          "input_files": [
+            {
+              "filename": "gtfs.zip"
+            }
+          ],
+          "agency_id": "7230001002032"          // optional: filter by agency
+        }
+      },
+      "reference_time": "20251016",             // YYYYMMDD format
+      "walking_meters_per_minute": 50.0         // walking speed
+    }
+  }
+}
+```
+
+- `networks`: defines one or more mobility networks to use for planning.
+  - `type`: `"gtfs"` indicates GTFS-based network construction.
+  - `input_files`: list of GTFS zip files to load (uploaded separately via API).
+  - `agency_id`: optional filter to use only specific transit agencies.
+- `reference_time`: simulation reference date in YYYYMMDD format.
+- `walking_meters_per_minute`: assumed walking speed for pedestrian segments.
+
+#### GBFS Configuration (Bike Share)
+
+```json
+{
+  "planner": {
+    "type": "planner",
+    "endpoint": "http://planner",
+    "details": {
+      "networks": {
+        "bike_share": {
+          "type": "gbfs",
+          "input_files": [
+            {
+              "filename": "gbfs_feed.json"
+            }
+          ]
+        }
+      },
+      "reference_time": "20251016",
+      "walking_meters_per_minute": 50.0
+    }
+  }
+}
+```
+
+- `type`: `"gbfs"` indicates GBFS-based network construction for bike-sharing systems.
+- `input_files`: list of GBFS JSON files to load (station information, bike availability).
+
+#### Multi-Modal Configuration (GTFS + GBFS)
+
+Multiple network types can be combined for multi-modal routing:
+
+```json
+{
+  "planner": {
+    "type": "planner",
+    "endpoint": "http://planner",
+    "details": {
+      "networks": {
+        "gtfs": {
+          "type": "gtfs",
+          "input_files": [
+            {
+              "filename": "gtfs.zip"
+            }
+          ]
+        },
+        "bike_share": {
+          "type": "gbfs",
+          "input_files": [
+            {
+              "filename": "gbfs_feed.json"
+            }
+          ]
+        }
+      },
+      "reference_time": "20251016",
+      "walking_meters_per_minute": 50.0
+    }
+  }
+}
+```
+
+This configuration enables routes that combine transit and bike-sharing (e.g., bike → train → bike).
+
+#### Example Setup
+
+1. **Upload GTFS File** (for transit):
+   ```python
+   import httpx
+   
+   with httpx.Client() as client:
+       with open("gtfs.zip", "rb") as gtfs_file:
+           response = client.post(
+               "http://localhost:3010/upload",
+               files={
+                   "upload_file": (
+                       "gtfs.zip",
+                       gtfs_file,
+                       "application/x-zip-compressed"
+                   )
+               }
+           )
+   ```
+
+2. **Upload GBFS File** (for bike share, optional):
+   ```python
+   with httpx.Client() as client:
+       with open("gbfs_feed.json", "rb") as gbfs_file:
+           response = client.post(
+               "http://localhost:3010/upload",
+               files={
+                   "upload_file": (
+                       "gbfs_feed.json",
+                       gbfs_file,
+                       "application/json"
+                   )
+               }
+           )
+   ```
+
+3. **Configure Planner in broker_setup.json** (as shown above)
+
+4. **Use Planner in Simulation**:
+   The planner automatically loads the GTFS/GBFS network during broker setup and uses it for route planning requests.
+
+#### Alternative: Programmatic Configuration
+
+For testing or special cases, networks can also be constructed programmatically:
 
 ```python
 from planner.simple import SimplePlanner
@@ -50,7 +195,6 @@ network = MobilityNetwork()
 # Add locations
 home = Location(location_id="Home", lat=35.0, lng=139.0)
 station = Location(location_id="Station", lat=35.1, lng=139.1)
-office = Location(location_id="Office", lat=35.2, lng=139.2)
 
 # Add services
 network.add_service(
@@ -59,37 +203,9 @@ network.add_service(
     dst=station,
     duration=10.0  # minutes
 )
-network.add_service(
-    service="train",
-    org=station,
-    dst=office,
-    duration=15.0,
-    frequency=10.0  # trains every 10 minutes
-)
 
 # Initialize planner
 planner = SimplePlanner(network=network)
-```
-
-#### Example
-
-```python
-# Plan a route
-routes = await planner.plan(
-    org=Location(location_id="Home", lat=35.0, lng=139.0),
-    dst=Location(location_id="Office", lat=35.2, lng=139.2),
-    dept=480.0  # 08:00
-)
-
-# routes[0] might be:
-# Route(
-#   dept=480.0,
-#   arrv=505.0,
-#   trips=[
-#     Trip(org=Home, dst=Station, dept=480.0, arrv=490.0, service="walking"),
-#     Trip(org=Station, dst=Office, dept=490.0, arrv=505.0, service="train")
-#   ]
-# )
 ```
 
 ### Output
@@ -98,11 +214,14 @@ routes = await planner.plan(
 - Each `Route` contains:
   - `dept`: departure time (minutes)
   - `arrv`: arrival time (minutes)
-  - `trips`: list of `Trip` objects representing individual legs
+  - `trips`: list of `Trip` objects representing individual legs with:
+    - `org`, `dst`: origin and destination locations from GTFS stops or GBFS stations
+    - `service`: transit service ID from GTFS (e.g., route name) or bike-sharing service from GBFS
+    - `dept`, `arrv`: leg-specific departure and arrival times
 - If no route is found, returns an empty list or a walking-only route.
 
 :::tip
-The Simple Planner is ideal for synthetic scenarios, controlled experiments, and unit testing where you need predictable, reproducible routing results.
+The Simple Planner with GTFS/GBFS input is ideal for simulating real-world multi-modal scenarios combining public transit and bike-sharing with actual schedule data, while maintaining lightweight computation and deterministic results.
 :::
 
 ## OpenTripPlanner-backed Service
