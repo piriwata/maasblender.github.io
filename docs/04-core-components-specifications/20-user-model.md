@@ -66,6 +66,17 @@ This model provides a user decision policy with a small set of preferences.
   - Otherwise: prefers plans containing the specified service but allows others.
 - `confirmed_services`: list of services that require reservation.
 
+### Output
+
+- `users()` returns the list of active users being managed.
+- The User Model emits the following events during execution:
+  - `RESERVE`: Request to reserve a seat on a mobility service (when reservation is required).
+  - `DEPART`: Departure event when a user starts a trip leg.
+- The User Model responds to the following events:
+  - `RESERVED`: Confirmation or failure of a reservation attempt. On failure, triggers fallback behavior.
+  - `DEPARTED`: Acknowledgment that a user has started a trip.
+  - `ARRIVED`: Notification that a user has completed a leg, triggering the next task or completing the journey.
+
 ## Favorite-based User Model
 
 - Files: `user_model/favorite/`
@@ -109,3 +120,26 @@ This model provides richer, per-user route preferences including favorite servic
   - `walking_time_limit_min`: maximum acceptable walking time in minutes.
   - `sort_type`: sorting criterion from `jschema.query.SortType` (e.g., `"earliest_arrival"`, `"least_transfers"`, `"lowest_cost"`).
 - `confirmed_services`: list of services that require reservation (same as a Simple model).
+
+### Output
+
+- `users()` returns the list of active users with their individual preferences.
+- Events emitted and consumed are identical to the Simple User Model:
+  - Emits: `RESERVE`, `DEPART`
+  - Responds to: `RESERVED`, `DEPARTED`, `ARRIVED`
+- The difference lies in the route selection logic, which applies per-user preferences before task construction.
+
+---
+
+## Common Operational Notes
+
+- **Event-Driven Architecture**: Both User Model implementations integrate with the simulation via event passing. They do not directly control mobility services but coordinate through the event system.
+- **Time Base**: All times are in minutes from the simulation start.
+- **Task Sequencing**: User journeys are decomposed into tasks (`Wait`, `Reserve`, `Trip`) that execute in order. Each task may trigger events that other components respond to.
+- **Fallback Mechanisms**: If a preferred mobility service is unavailable, both models can fall back to:
+  1. Alternative routes (if multiple candidates were planned).
+  2. Walking-only paths as a last resort.
+- **Integration Points**:
+  - Requires a `Planner` component to generate route candidates.
+  - Requires `MobilityService` components to handle `RESERVE` and `DEPART` requests.
+- **Extensibility**: Custom User Model implementations can be created by following the same event contract and lifecycle patterns, allowing for different decision-making policies (e.g., cost-minimizing, carbon-aware, accessibility-focused).

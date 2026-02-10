@@ -73,6 +73,20 @@ The Simple Planner is typically configured through the broker setup with GTFS or
 - `reference_time`: simulation reference date in YYYYMMDD format.
 - `walking_meters_per_minute`: assumed walking speed for pedestrian segments.
 
+### Output
+
+- Returns a list of `Route` objects, each representing a viable travel option.
+- Each `Route` contains:
+  - `dept`: overall departure time (minutes from simulation start).
+  - `arrv`: overall arrival time (minutes from simulation start).
+  - `trips`: ordered list of legs, where each leg includes:
+    - `org`: origin location with `locationId`, `lat`, `lng`.
+    - `dst`: destination location with `locationId`, `lat`, `lng`.
+    - `dept`: leg departure time.
+    - `arrv`: leg arrival time.
+    - `service`: service identifier (e.g., `"walk"`, `"bus_line_1"`).
+- Routes are typically sorted by arrival time, but ordering may vary based on implementation details.
+
 #### GBFS Configuration (Bike Share)
 
 ```json
@@ -200,4 +214,37 @@ The `otp-config.zip` should contain:
      }
    }
    ```
+
+These configuration files control how OTP builds its routing graph and the default parameters for route calculation.
+
+:::info
+For detailed OTP configuration options, refer to the [OpenTripPlanner documentation](https://docs.opentripplanner.org/).
+:::
+
+### Output
+
+- Returns a list of `Route` objects in the same format as the Simple Planner.
+- Each `Route` represents an itinerary computed by OTP, transformed into MaaS Blender's internal format.
+- Routes include detailed leg information with mode-specific attributes:
+  - Walking legs: distance and duration based on OSM street network.
+  - Transit legs: scheduled departure/arrival times, route names, and stop information from GTFS.
+  - Bike share legs: station locations and estimated travel times from GBFS.
+- The number of returned routes depends on OTP's configuration and the complexity of the transit network.
+
+---
+
+## Common Operational Notes
+
+- **Interface Contract**: Both planners implement the same interface: `plan(org, dst, dept)` → `List[Route]`.
+- **Time Base**: All times are in minutes from the simulation start.
+- **Coordinate System**: All locations use WGS84 coordinates (latitude/longitude).
+- **Multi-modal Routing**: Both planners can combine different transportation modes in a single route (e.g., walk → transit → walk).
+- **Configuration Trade-offs**:
+  - **Simple Planner**: Faster, deterministic, suitable for synthetic networks and rapid prototyping. Limited to explicitly defined services.
+  - **OTP Planner**: More realistic, supports complex real-world networks with GTFS/GBFS/OSM data. Requires graph building time and external service setup.
+- **Integration**: The User Model component consumes planner output to construct user journeys. The planner itself is stateless and does not track user state.
+- **Extensibility**: Additional planner implementations can be created (e.g., integrating with other routing engines or implementing custom algorithms) as long as they conform to the `plan()` interface and return `Route` objects in the expected format.
+- **Performance Considerations**:
+  - Simple Planner: In-process, minimal latency, suitable for simulations with many planning requests.
+  - OTP Planner: Network call overhead, but leverages sophisticated algorithms for realistic multi-modal routing.
  
