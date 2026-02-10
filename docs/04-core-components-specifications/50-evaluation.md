@@ -120,8 +120,8 @@ The evaluator writes JSON log entries for each evaluated demand:
 **Output Fields:**
 
 - `demand_id` - Unique identifier for the demand
-- `time` - Scheduled departure time
-- `event_time` - Time when demand was originally created (preserved for backward compatibility with earlier log formats)
+- `time` - Time when evaluation was performed (typically the departure time)
+- `event_time` - Time when the original demand event was created (may differ from evaluation time when using ON_DEPARTURE timing)
 - `org` - Origin location ID
 - `dst` - Destination location ID
 - `actual_service` - Service actually used by the user (if any)
@@ -269,9 +269,13 @@ The reservability check is performed at evaluation time, which may differ from a
 ### Validation and Assertions
 
 The evaluator performs validation to ensure route consistency:
-- Verifies that all returned routes have the same origin and destination (within approximately 11 meter tolerance, corresponding to 0.0001 degree coordinate difference)
+- Verifies that all returned routes have the same origin and destination (within a tolerance of 0.0001 degrees, approximately 11 meters at mid-latitudes)
 - Logs warnings if routes are inconsistent
 - Continues evaluation even if validation fails to avoid stopping the simulation
+
+:::info
+The coordinate tolerance of 0.0001 degrees corresponds to roughly 11 meters at the equator. At higher latitudes, the actual distance for the same degree difference will be less for longitude but remain similar for latitude.
+:::
 
 ### Error Handling
 
