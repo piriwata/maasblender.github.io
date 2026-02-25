@@ -365,7 +365,7 @@ The One-Way simulator is configured after uploading a GBFS zip file:
   "charging_speed": 0.003333,               // SoC increase rate [/min] (default: full charge in ~5h)
   "discharging_speed": -0.004386,           // SoC decrease rate [/min] (default: full drain in ~3h38min)
   "operator_start_time": 360.0,             // operator workday start [min] (default: 360 = 06:00)
-  "operator_end_time": 720.9,               // operator workday end [min] (default: ~720 = 12:00)
+  "operator_end_time": 720.0,               // operator workday end [min] (default: 720 = 12:00)
   "operator_interval": 15.0,               // rebalancing interval [min] (default: 15)
   "operator_speed": 1000.0,                 // operator vehicle speed [m/min] (default: 1000 = 60km/h)
   "operator_loading_time": 1,              // time to load/unload one vehicle [min] (default: 1)
