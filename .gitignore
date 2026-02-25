@@ -1,6 +1,9 @@
 # Dependencies
 /node_modules
 
+# External repositories (checked out by copilot-setup-steps)
+/maasblender
+
 # Production
 /build
 
